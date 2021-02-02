@@ -78,7 +78,26 @@ export function Create<T extends { new (...args: any[]): {} }>(
 }
 
 export function ReadAll<T extends { new (...args: any[]): {} }>() {
+    return (constructor : T) => {
+        const controllerStore = entityManager.store[constructor.name] || { subpaths: { } }
+        controllerStore.subpaths['GET /'] = {
+            async handler(req, res, next) {
+                const entities = await controllerStore.repo.all()
 
+                if (entities) {
+                    res.json(entities.map(entity => applyTransforms(constructor.name, entity)))
+                } else {
+                    res.status(404).json({ message: 'Entity not found' })
+                }
+            },
+            method: 'GET',
+            subpath: '/'
+        }
+        
+        entityManager.store[constructor.name] = controllerStore
+
+        return constructor
+    }
 }
 
 export function ReadOne<T extends { new (...args: any[]): {} }>() {

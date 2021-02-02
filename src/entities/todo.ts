@@ -5,8 +5,11 @@ import { TodosRepository } from './todos.repository';
 @Create(['description'])
 @ReadOne()
 @DataRepository(new TodosRepository())
+@ReadAll()
 export class Todo {
     id?: number;
+
+    @Transform(description => `${description} YOW`)
     description?: string;
     done?: boolean;
 }
