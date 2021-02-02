@@ -18,7 +18,16 @@ export function BuildRoutes() {
 }
 
 const entityManager: EntityManager = {
-    store: {}
+    store: {},
+    transforms: {},
+}
+
+export function Transform<T extends Object>(transformFunction: (data : any) => any) {
+    return (target: T, propertyKey: string) => {
+        const transformStoreEntity = entityManager.transforms[target.constructor.name] || { [propertyKey]: [] }
+        transformStoreEntity[propertyKey].push(transformFunction)
+        entityManager.transforms[target.constructor.name] = transformStoreEntity
+    }
 }
 
 export function DataRepository<T extends { new (...args: any[]): {} }>(repo: BasicRepo<any>) {
@@ -42,7 +51,7 @@ export function Create<T extends { new (...args: any[]): {} }>(
     return function (constructor: T) {
         const controllerStore = entityManager.store[constructor.name] || { subpaths: { } }
         controllerStore.subpaths['POST /'] = {
-            handler(req, res, next) {
+            async handler(req, res, next) {
                 let allRequiredFielsPresent = true
                 const fieldsNotPresent: string[] = []
                 for (const requiredField of requiredFields) {
@@ -53,7 +62,7 @@ export function Create<T extends { new (...args: any[]): {} }>(
                 }
 
                 if (allRequiredFielsPresent) {
-                    res.json(controllerStore.repo.create(req.body))
+                    res.json(await controllerStore.repo.create(req.body))
                 } else {
                     res.status(400).json({ message: 'Required fields not present', error:  fieldsNotPresent })
                 }                
@@ -68,22 +77,20 @@ export function Create<T extends { new (...args: any[]): {} }>(
     }
 }
 
-export function Read<T extends { new (...args: any[]): {} }>() {
-    return function (constructor: T) {
-        
-    }
+export function ReadAll<T extends { new (...args: any[]): {} }>() {
+
 }
 
 export function ReadOne<T extends { new (...args: any[]): {} }>() {
     return function (constructor: T) {
         const controllerStore = entityManager.store[constructor.name] || { subpaths: { } }
         controllerStore.subpaths['GET /:id'] = {
-            handler(req, res, next) {
+            async handler(req, res, next) {
                 const { id } = req.params
-                const entity = controllerStore.repo.get(Number(id))
+                const entity = await controllerStore.repo.get(Number(id))
 
                 if (entity) {
-                    res.json(entity)
+                    res.json(applyTransforms(constructor.name, entity))
                 } else {
                     res.status(404).json({ message: 'Entity not found', error: { id } })
                 }
@@ -96,6 +103,24 @@ export function ReadOne<T extends { new (...args: any[]): {} }>() {
     }
 }
 
+function applyTransforms<EntityType>(className: string, entity: EntityType): EntityType {
+    const transformStoreEntity = entityManager.transforms[className]
+    if (transformStoreEntity) {
+        let entityShallowCopy = { ...entity } as EntityType
+        for (const entityProperty of Object.keys(entityShallowCopy)) {
+            if (transformStoreEntity[entityProperty]) {
+                entityShallowCopy = Object.assign(entityShallowCopy, {
+                    [entityProperty]: transformStoreEntity[entityProperty]
+                        .reduce((data, func) => func(data), (entityShallowCopy as any)[entityProperty])
+                })
+            }
+        }
+        return entityShallowCopy
+    } else {
+        return entity
+    }
+}
+
 export function Delete<T extends { new (...args: any[]): {} }>() {
     return function (constructor: T) {
         
@@ -105,6 +130,13 @@ export function Delete<T extends { new (...args: any[]): {} }>() {
 type EntityManager = {
     store: {
         [key:string]: RoutesDefinition
+    }
+    transforms: Transforms
+}
+
+type Transforms = {
+    [entityName:string]: {
+        [propertyName:string]: ((value: any) => any)[]
     }
 }
 
@@ -121,8 +153,8 @@ type RoutesDefinition<T = any> = {
 }
 
 export type BasicRepo<T> = {
-    all(): T[]
-    get(id: number): T
-    set(id: number, entity: T): void
-    create(entity: T): T
+    all(): Promise<T[]>
+    get(id: number): Promise<T>
+    set(id: number, entity: T): Promise<void>
+    create(entity: T): Promise<T>
 }

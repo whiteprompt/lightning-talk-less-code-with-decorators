@@ -11,5 +11,10 @@ Content-Type: application/json
 
 ###
 
-GET {{baseurl}}/api/todos/2 HTTP/1.1
+GET {{baseurl}}/api/todos/1 HTTP/1.1
+Content-Type: application/json
+
+###
+
+GET {{baseurl}}/api/todos/ HTTP/1.1
 Content-Type: application/json
